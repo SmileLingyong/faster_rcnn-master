@@ -72,7 +72,7 @@ function save_model_path = fast_rcnn_train(conf, imdb_train, roidb_train, vararg
     
     [image_roidb_train, bbox_means, bbox_stds]...
                             = fast_rcnn_prepare_image_roidb(conf, opts.imdb_train, opts.roidb_train);
-    % 将所有训练图片以及rois传入，计算以下参数.其中包括，计算所有图片的rois的均值bbox_means和方差bbox_stds，并将image_roidb(i).bbox_targets使用均值和方差进行归一化处理.
+    % 将所有训练图片以及rois传入，计算以下参数.其中包括，计算所有图片的image_roidb(i).bbox_targets的均值bbox_means和方差bbox_stds，并将image_roidb(i).bbox_targets使用该均值和方差进行归一化处理.
     % image_roidb_train   : 10022x1 struct array with : 该参数主要理解bbox_targets的含义。
     %         image_path
     %         image_id
@@ -94,8 +94,8 @@ function save_model_path = fast_rcnn_train(conf, imdb_train, roidb_train, vararg
         fprintf('Done.\n');
 
         % fix validation data
-        shuffled_inds_val = generate_random_minibatch([], image_roidb_val, conf.ims_per_batch);
-        shuffled_inds_val = shuffled_inds_val(randperm(length(shuffled_inds_val), opts.val_iters));
+        shuffled_inds_val = generate_random_minibatch([], image_roidb_val, conf.ims_per_batch);     % 1x2475 cell, 验证集所包含的images数量: 2475x2 (因为每个cell中包含两张图片索引,做为一个batch)
+        shuffled_inds_val = shuffled_inds_val(randperm(length(shuffled_inds_val), opts.val_iters)); % 1x500  cell, 只取500x2张图片做为做为验证集
     end
     
 %%  try to train/val with images which have maximum size potentially, to validate whether the gpu memory is enough  

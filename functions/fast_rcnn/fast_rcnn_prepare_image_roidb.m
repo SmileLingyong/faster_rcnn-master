@@ -37,7 +37,7 @@ function [image_roidb, bbox_means, bbox_stds] = fast_rcnn_prepare_image_roidb(co
     [image_roidb, bbox_means, bbox_stds] = append_bbox_regression_targets(conf, image_roidb, bbox_means, bbox_stds);
 end
 
-% 计算所有图片的rois的均值bbox_means和方差bbox_stds，并将image_roidb(i).bbox_targets使用均值和方差进行归一化处理.
+% 计算所有图片的image_roidb(i).bbox_targets的均值bbox_means和方差bbox_stds，并将image_roidb(i).bbox_targets使用该均值和方差进行归一化处理.
 function [image_roidb, means, stds] = append_bbox_regression_targets(conf, image_roidb, means, stds)
     % means and stds -- (k+1) * 4, include background class
 
@@ -55,13 +55,18 @@ function [image_roidb, means, stds] = append_bbox_regression_targets(conf, image
         num_images = length(image_roidb);
         fprintf('Warning: fast_rcnn_prepare_image_roidb: filter out %d images, which contains zero valid samples\n', sum(~valid_imgs));
     end
-        
+    
+    % 计算所有图片的所有boxes_targets的均值和方差
+    % 计算20类中，每一类所包含的boxes_targets(表示的是每个前景boxes回归到其对应的ground truth所需要做的平移尺度变换。前景才有值，背景都为0)进行求和sums，以及平方求和squared_sums。
+    % 然后将sums/class_counts得到所有boxes_targets的均值means.
+    % 并使用squared_sums/class_counts - means.^2得到方差。(即平方的期望减去期望的平方)
+    % 就得到最终的，所有图片所有boxes_targets的均值和方差。
     if ~(exist('means', 'var') && ~isempty(means) && exist('stds', 'var') && ~isempty(stds)) % 计算所有图片的rois的均值和方差
         % Compute values needed for means and stds
         % var(x) = E(x^2) - E(x)^2
-        class_counts = zeros(num_classes, 1) + eps;
-        sums = zeros(num_classes, 4);
-        squared_sums = zeros(num_classes, 4);
+        class_counts = zeros(num_classes, 1) + eps; % 20x1
+        sums = zeros(num_classes, 4);               % 20x4
+        squared_sums = zeros(num_classes, 4);       % 20x4
         for i = 1:num_images
            targets = image_roidb(i).bbox_targets;
            for cls = 1:num_classes
