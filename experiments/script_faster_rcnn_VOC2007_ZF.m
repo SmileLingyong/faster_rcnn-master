@@ -10,8 +10,10 @@ function script_faster_rcnn_VOC2007_ZF()
 clc;
 clear mex;
 clear is_valid_handle; % to clear init_key
-run(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'startup'));
+%% Comment out this line. modefied by lly on 2018.5.7 23:19 ---------------
+% run(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'startup'));
 %% -------------------- CONFIG --------------------
+caffe.reset_all();
 opts.caffe_version          = 'caffe_faster_rcnn';
 opts.gpu_id                 = 1;
 active_caffe_mex(opts.gpu_id, opts.caffe_version);

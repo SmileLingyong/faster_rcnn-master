@@ -1,11 +1,10 @@
 function script_faster_rcnn_demo()
-th = tic;
 
 close all;
 clc;
 clear mex;
 clear is_valid_handle; % to clear init_key
-run(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'startup'));
+% run(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'startup'));
 %% -------------------- CONFIG --------------------
 opts.caffe_version          = 'caffe_faster_rcnn';
 opts.gpu_id                 = 1;  %% default is auto_select_gpu
@@ -82,7 +81,7 @@ for j = 1:length(im_names)
     
     % test proposal
     th = tic();
-    % 使用RPN网络产生anchors，即一个个候选框以及相应的分数
+    % 使用RPN网络得到的region proposals 包括boxes以及scores(这都已经排好序了的，并且是原图尺寸对应的anchors boxes)
     [boxes, scores]             = proposal_im_detect(proposal_detection_model.conf_proposal, rpn_net, im); 
     t_proposal = toc(th);
     th = tic();
@@ -126,9 +125,6 @@ fprintf('mean time: %.3fs\n', mean(running_time));
 
 caffe.reset_all(); 
 clear mex;
-
-
-fprintf('\nTotal test cost time is %.3f\n', toc(th));
 
 end
 

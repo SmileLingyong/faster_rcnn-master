@@ -4,9 +4,10 @@ function [pred_boxes, scores, box_deltas_, anchors_, scores_] = proposal_im_dete
 %    函数功能：要结合proposal_test.prototxt网络以及proposal_locate_anchors()函数一起看。
 % 其使用RPN网络，得到了RPN网络之后的proposal_bbox_pred 和 proposal_cls_prb（即可知道经过卷积之后的feature map大小），
 % 然后计算该RPN网络最后输出的feature map中每个像素点，对应于原图中的位置。并使用该原图上的位置点，计算其在原图上的9个anchor(共有feature_map_size个位置)，
-% 即可得到9×feature_map_size个anchor. 
-% 然后再用box_deltas，对产生的anchors进行边框回归位置精修。再进行后续的处理。
-% 
+% 即可得到9×feature_map_size个anchor. 然后再用box_deltas(每个anchors需要做的平移尺度变换)，对产生的anchors进行边框回归位置精修。这样我们就得到了该张图片所需要的region proposals(anchors)
+% 由output_blobs{2}:proposal_cls_prb[51x351x2]维，其表示经过分类层proposal_cls_score以及reshape——>softmax之后，输出的每个位置(共有51x39个位置)上, 9个anchor属于前景和背景的概率。
+% 我们取第二维属于前景的概率得分，即得到了该张图片所有region proposals(anchors)属于前景的概率得分。
+% [ 这样我们就得到了该张图片所需要的 pred_boxes + scores ]
 % --------------------------------------------------------
 % Faster R-CNN
 % Copyright (c) 2015, Shaoqing Ren
@@ -38,7 +39,7 @@ function [pred_boxes, scores, box_deltas_, anchors_, scores_] = proposal_im_dete
     box_deltas = reshape(box_deltas, 4, [])';    % 17100x4
     
     anchors = proposal_locate_anchors(conf, size(im), conf.test_scales, featuremap_size); %% #lly# see function detail, 此时得到的是缩放后的原图尺寸对应的anchors,(短边为600的)
-    pred_boxes = fast_rcnn_bbox_transform_inv(anchors, box_deltas); %% #lly# see function detail
+    pred_boxes = fast_rcnn_bbox_transform_inv(anchors, box_deltas); %% #lly# see function detail, 用box_deltas(每个anchors需要做的平移尺度变换)，对产生的anchors进行边框回归位置精修。
       % scale back : 将anchors缩放回去，即缩放到原图尺寸 375x500 对应的anchors
     pred_boxes = bsxfun(@times, pred_boxes - 1, ...
         ([im_size(2), im_size(1), im_size(2), im_size(1)] - 1) ./ ([scaled_im_size(2), scaled_im_size(1), scaled_im_size(2), scaled_im_size(1)] - 1)) + 1;
@@ -46,7 +47,7 @@ function [pred_boxes, scores, box_deltas_, anchors_, scores_] = proposal_im_dete
     
     assert(conf.test_binary == false);
     % use softmax estimated probabilities
-    scores = output_blobs{2}(:, :, end); % 50x342
+    scores = output_blobs{2}(:, :, end); % 50x342, 说明: output_blobs{2}:[51x351x2]维，其表示经过分类层proposal_cls_score以及reshape——>softmax之后，输出的每个位置(共有51x39个位置)上, 9个anchor属于前景和背景的概率。我们这里只取后面属于前景的概率得分
     scores = reshape(scores, size(output_blobs{1}, 1), size(output_blobs{1}, 2), []); % 50x38x9
     % permute from [width, height, channel] to [channel, height, width], where channel is the
         % fastest dimension
