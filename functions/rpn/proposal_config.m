@@ -8,6 +8,7 @@ function conf = proposal_config(varargin)
 
     ip = inputParser;
     
+    
     %% training
     ip.addParamValue('use_gpu',         gpuDeviceCount > 0, ...            
                                                         @islogical);
@@ -22,12 +23,11 @@ function conf = proposal_config(varargin)
     ip.addParamValue('max_size',        1000,           @isscalar);
     % Images per batch, only supports ims_per_batch = 1 currently
     ip.addParamValue('ims_per_batch',   1,              @isscalar);
-    % Minibatch size
+    % Minibatch size: 每幅图像中筛选使用的bg样本和fg样本的总个数 
     ip.addParamValue('batch_size',      256,            @isscalar);
-    % Fraction of minibatch that is foreground labeled (class > 0)
+    % Fraction of minibatch that is foreground labeled (class > 0): batch_size中fg样本的比例，如果fg样本个数不足，则添加bg样本 
     ip.addParamValue('fg_fraction',     0.5,           @isscalar);
-    % weight of background samples, when weight of foreground samples is
-    % 1.0
+    % weight of background samples, when weight of foreground samples is 1.0: 计算损失时每个反例样本的权值，正例样本权值全为1 
     ip.addParamValue('bg_weight',       1.0,            @isscalar);
     % Overlap threshold for a ROI to be considered foreground (if >= fg_thresh)
     ip.addParamValue('fg_thresh',       0.7,            @isscalar);
@@ -40,7 +40,7 @@ function conf = proposal_config(varargin)
     % Use horizontally-flipped images during training?
     ip.addParamValue('use_flipped',     true,           @islogical);
     % Stride in input image pixels at ROI pooling level (network specific)
-    % 16 is true for {Alex,Caffe}Net, VGG_CNN_M_1024, and VGG16
+    % 16 is true for {Alex,Caffe}Net, VGG_CNN_M_1024, and VGG16: VGG中conv5_3相比于输入图像缩小了16倍，也就是相邻两个点之间的stride=16 
     ip.addParamValue('feat_stride',     16,             @isscalar);
     % train proposal target only to labled ground-truths or also include
     % other proposal results (selective search, etc.)

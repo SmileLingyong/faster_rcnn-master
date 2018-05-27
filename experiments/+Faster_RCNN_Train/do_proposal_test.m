@@ -8,6 +8,7 @@ function roidb_new = do_proposal_test(conf, model_stage, imdb, roidb)
     
     roidb_regions               = make_roidb_regions(aboxes, imdb.image_ids);  
     
+    % 将每张图片的anchors结合该张图片存储再roidb中的ground truth，构成新的roidb [ground truth; anchors]，这也是Fast-RCNN网络的训练测试数据格式。
     roidb_new                   = roidb_from_proposal(imdb, roidb, roidb_regions, ...
                                         'keep_raw_proposal', false);    
 end

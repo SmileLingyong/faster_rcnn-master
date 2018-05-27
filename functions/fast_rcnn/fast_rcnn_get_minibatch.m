@@ -8,7 +8,7 @@ function [im_blob, rois_blob, labels_blob, bbox_targets_blob, bbox_loss_blob] = 
 % Licensed under The MIT License [see LICENSE for details]
 % --------------------------------------------------------
 % 函数功能：传入一个批次batch的训练图片2张的结构体参数，每个训练batch使用128个rois(region proposals)，
-% 即每张图片使用64个rois，然后这64个rois中前景占25%即16张，背景占75%即48张。
+% 即每张图片使用64个rois，然后这64个rois中前景占25%即16张，背景占75%即48张。然后计算该一个batch所需要的blob格式输入数据
 
     num_images = length(image_roidb);
     % Infer number of classes from the number of columns in gt_overlaps

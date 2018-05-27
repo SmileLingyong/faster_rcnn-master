@@ -91,12 +91,12 @@ for j = 1:length(im_names)
     
     % test detection
     th = tic();
-    if proposal_detection_model.is_share_feature
+    if proposal_detection_model.is_share_feature  %% 当使用PRN网络提取的conv5特征时，则需要将conv5特征和rois做为CNN输入
         % 使用以上处理后的anchors boxes做为rois输入到Fast-RCNN，并输入RPN网络conv5_3输出的feature map做为'data',进行后续的softmax分类+Boundingboxes回归。
         [boxes, scores]             = fast_rcnn_conv_feat_detect(proposal_detection_model.conf_detection, fast_rcnn_net, im, ...
             rpn_net.blobs(proposal_detection_model.last_shared_output_blob_name), ...
             aboxes(:, 1:4), opts.after_nms_topN);
-    else
+    else    %% 不使用RPN提取的conv5特征，则将 image + rois 做为CNN输入
         [boxes, scores]             = fast_rcnn_im_detect(proposal_detection_model.conf_detection, fast_rcnn_net, im, ...
             aboxes(:, 1:4), opts.after_nms_topN);
     end

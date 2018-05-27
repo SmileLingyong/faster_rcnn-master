@@ -103,10 +103,10 @@ function mAP = fast_rcnn_test(conf, imdb, roidb, varargin)
             [boxes, scores] = fast_rcnn_im_detect(conf, caffe_net, im, d.boxes, max_rois_num_in_gpu);
 
             for j = 1:num_classes
-                inds = find(~d.gt & scores(:, j) > thresh(j)); % 找到属于背景的boxes，并且该第j类中得分大于thresh(j)的背景boxes
+                inds = find(~d.gt & scores(:, j) > thresh(j)); % 在除去ground truth的boxes中，找到该第j类中得分大于thresh(j)的boxes
                 if ~isempty(inds)
-                    [~, ord] = sort(scores(inds, j), 'descend');  % 将这些背景boxes按照第j类得分进行排序
-                    ord = ord(1:min(length(ord), max_per_image)); % 平均没类每张图片最多保留max_per_image个boxes
+                    [~, ord] = sort(scores(inds, j), 'descend');  % 将这些boxes按照第j类得分进行排序
+                    ord = ord(1:min(length(ord), max_per_image)); % 平均每类每张图片最多保留max_per_image个boxes
                     inds = inds(ord);
                     cls_boxes = boxes(inds, (1+(j-1)*4):((j)*4)); % 该第j类boxes
                     cls_scores = scores(inds, j);                 % 该第j类的scores

@@ -82,7 +82,7 @@ function save_model_path = fast_rcnn_train(conf, imdb_train, roidb_train, vararg
     %         boxes     : [ground truth + region proposals] (boxes)
     %         class     
     %         image
-    %         bbox_targets  : 每个ex_rois与其gt_rois进行bounding boxes regression需要做的平移尺度变换(4个参数)。 在加上其在rois中的索引(1参数)，构成bbox_targets
+    %         bbox_targets  : 每个ex_rois与其gt_rois进行bounding boxes regression需要做的平移尺度变换(4个参数)。 再加上其所属ground truth类别标签(1参数)，构成bbox_targets
     % bbox_means        : 21x4 double, 所有训练图片的rois的bbox_means均值，bbox_stds方差。
     % bbox_stds         : 21x4 double
     fprintf('Done.\n');
@@ -178,8 +178,11 @@ function save_model_path = fast_rcnn_train(conf, imdb_train, roidb_train, vararg
 end
 
 function [shuffled_inds, sub_inds] = generate_random_minibatch(shuffled_inds, image_roidb_train, ims_per_batch)
-
-    % shuffle training data per batch
+    % Input:
+    %       image_roidb_train: 4952x1 struct
+    %       ims_per_batch:     2
+    % Function:
+    %       shuffle training data per batch
     if isempty(shuffled_inds)
         % make sure each minibatch, only has horizontal images or vertical
         % images, to save gpu memory

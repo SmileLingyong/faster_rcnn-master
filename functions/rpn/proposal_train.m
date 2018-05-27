@@ -75,6 +75,22 @@ function save_model_path = proposal_train(conf, imdb_train, roidb_train, varargi
     fprintf('Preparing training data...');
     [image_roidb_train, bbox_means, bbox_stds]...
                             = proposal_prepare_image_roidb(conf, opts.imdb_train, opts.roidb_train);
+    % 将所有图片imdbs以及roidbs结构体数据传入，构造image_roidb_train结构体数据，
+    % 这里我们只用了每张图片rois结构体数据中的ground truth，并没有用ss产生的rois(region proposals)。 
+    % 然后使用Anchors机制计算每张图片产生的anchors，结合每张图片的rois结构体中的ground truth计算overlap，
+    % 接着通过分析找到这些anchors中哪些属于前景，哪些属于背景，并计算前景边框回归到其所属ground truth的平移缩放参数，加上ground truth类别标签构成bbox_targets参数，之后又将前景的类别都设置为1了，背景则依然是0
+    % 然后计算所有图片的bbox_targets的均值和方差，并将bbox_targets用该均值和方差做归一化处理。 
+    % image_roidb_train   : 10022x1 struct array with : 该参数主要理解bbox_targets的含义。
+    %   image_path
+    %   image_id
+    %   im_size
+    %   imdb_name
+    %   num_classes
+    %   boxes             : [ground truth] 这里只保留了每张图片的ground truth
+    %   class
+    %   image
+    %   bbox_targets      : 每个前景rois与其gt_rois进行bounding boxes regression需要做的平移尺度变换(4个参数)。 再加上其所属ground truth类别标签(1参数)，构成bbox_targets
+    
     fprintf('Done.\n');
     
     if opts.do_val
@@ -84,8 +100,8 @@ function save_model_path = proposal_train(conf, imdb_train, roidb_train, varargi
         fprintf('Done.\n');
 
         % fix validation data
-        shuffled_inds_val   = generate_random_minibatch([], image_roidb_val, conf.ims_per_batch);
-        shuffled_inds_val   = shuffled_inds_val(randperm(length(shuffled_inds_val), opts.val_iters));
+        shuffled_inds_val   = generate_random_minibatch([], image_roidb_val, conf.ims_per_batch);       % 1x4952 cell, 验证集所包含的images数量：4952x1(每个cell中包含一张图片索引，做为一个batch)
+        shuffled_inds_val   = shuffled_inds_val(randperm(length(shuffled_inds_val), opts.val_iters));   % 1x500  cell, 只取500x1张图片做为做为验证集
     end
     
     conf.classes        = opts.imdb_train{1}.classes;
@@ -109,8 +125,16 @@ function save_model_path = proposal_train(conf, imdb_train, roidb_train, varargi
         caffe_solver.net.set_phase('train');
 
         % generate minibatch training data
-        [shuffled_inds, sub_db_inds] = generate_random_minibatch(shuffled_inds, image_roidb_train, conf.ims_per_batch);        
+        % 第一次调用generate_random_minibatch()函数时，shuffled_inds = [], 根据传入的image_roidb_train(准备好的imdb+rois结合的结构体) conf.ims_per_batch(每次训练使用图片数:1张)，
+        % 产生随机的训练数据索引，维度为1x4952 double。其中每一列包含两个一张图片索引，做为一个batch的训练图片。此后每次调用，只需要将shuffled_inds的第一列取出赋值给sub_inds做为训练的一张图片即可，
+        % 然后删除shuffled_inds取出的第一列索引，下次直接再取第一列索引即可。
+        [shuffled_inds, sub_db_inds] = generate_random_minibatch(shuffled_inds, image_roidb_train, conf.ims_per_batch);
+        % 计算每个batch所需要的blob格式的输入数据
+        % input_blobs = {im_blob,           labels_blob,      label_weights_blob,    bbox_targets_blob,    bbox_loss_blob};
+        % 1x5 cell array
+        %           [800×600×3 single]    [51×39×9 single]    [51×39×9 single]       [51×39×36 single]    [51×39×36 single]
         [net_inputs, scale_inds] = proposal_generate_minibatch_fun(conf, image_roidb_train(sub_db_inds));
+        
         
         % visual_debug_fun(conf, image_roidb_train(sub_db_inds), net_inputs, bbox_means, bbox_stds, conf.classes, scale_inds);
         caffe_solver.net.reshape_as_input(net_inputs);
@@ -175,31 +199,34 @@ function val_results = do_validation(conf, caffe_solver, proposal_generate_minib
 end
 
 function [shuffled_inds, sub_inds] = generate_random_minibatch(shuffled_inds, image_roidb_train, ims_per_batch)
-
-    % shuffle training data per batch
+    % Input:
+    %       image_roidb_train: 4952x1 struct
+    %       ims_per_batch:     1
+    % Function:
+    %       shuffle training data per batch
     if isempty(shuffled_inds)
         % make sure each minibatch, only has horizontal images or vertical
         % images, to save gpu memory
         
-        hori_image_inds = arrayfun(@(x) x.im_size(2) >= x.im_size(1), image_roidb_train, 'UniformOutput', true);
+        hori_image_inds = arrayfun(@(x) x.im_size(2) >= x.im_size(1), image_roidb_train, 'UniformOutput', true); % 4952x1 logical
         vert_image_inds = ~hori_image_inds;
-        hori_image_inds = find(hori_image_inds);
-        vert_image_inds = find(vert_image_inds);
+        hori_image_inds = find(hori_image_inds);  % 4065x1 logical
+        vert_image_inds = find(vert_image_inds);  % 887x1  double
         
         % random perm
-        lim = floor(length(hori_image_inds) / ims_per_batch) * ims_per_batch;
-        hori_image_inds = hori_image_inds(randperm(length(hori_image_inds), lim));
-        lim = floor(length(vert_image_inds) / ims_per_batch) * ims_per_batch;
-        vert_image_inds = vert_image_inds(randperm(length(vert_image_inds), lim));
+        lim = floor(length(hori_image_inds) / ims_per_batch) * ims_per_batch;       % lim = 4065
+        hori_image_inds = hori_image_inds(randperm(length(hori_image_inds), lim));  % 4065x1 double
+        lim = floor(length(vert_image_inds) / ims_per_batch) * ims_per_batch;       % lim = 886
+        vert_image_inds = vert_image_inds(randperm(length(vert_image_inds), lim));  % 887x1  double
         
         % combine sample for each ims_per_batch 
-        hori_image_inds = reshape(hori_image_inds, ims_per_batch, []);
-        vert_image_inds = reshape(vert_image_inds, ims_per_batch, []);
+        hori_image_inds = reshape(hori_image_inds, ims_per_batch, []);              % 1x4065 double
+        vert_image_inds = reshape(vert_image_inds, ims_per_batch, []);              % 1x887  double
         
-        shuffled_inds = [hori_image_inds, vert_image_inds];
+        shuffled_inds = [hori_image_inds, vert_image_inds];                         % 1x4952 double
         shuffled_inds = shuffled_inds(:, randperm(size(shuffled_inds, 2)));
         
-        shuffled_inds = num2cell(shuffled_inds, 1);
+        shuffled_inds = num2cell(shuffled_inds, 1); % 1x4952 cell
     end
     
     if nargout > 1
@@ -212,15 +239,15 @@ end
 
 function rst = check_error(rst, caffe_solver)
 
-    cls_score = caffe_solver.net.blobs('proposal_cls_score_reshape').get_data();
-    labels = caffe_solver.net.blobs('labels_reshape').get_data();
-    labels_weights = caffe_solver.net.blobs('labels_weights_reshape').get_data();
+    cls_score = caffe_solver.net.blobs('proposal_cls_score_reshape').get_data(); % 51x351x2 single cls_score为背景和前景的得分，其中背景得分在第一维：51x315x1, 前景得分在第二维。
+    labels = caffe_solver.net.blobs('labels_reshape').get_data();                % 51x351x1 single   
+    labels_weights = caffe_solver.net.blobs('labels_weights_reshape').get_data();% 51x351x1 single   
     
-    accurate_fg = (cls_score(:, :, 2) > cls_score(:, :, 1)) & (labels == 1);
-    accurate_bg = (cls_score(:, :, 2) <= cls_score(:, :, 1)) & (labels == 0);
-    accurate = accurate_fg | accurate_bg;
-    accuracy_fg = sum(accurate_fg(:) .* labels_weights(:)) / (sum(labels_weights(labels == 1)) + eps);
-    accuracy_bg = sum(accurate_bg(:) .* labels_weights(:)) / (sum(labels_weights(labels == 0)) + eps);
+    accurate_fg = (cls_score(:, :, 2) > cls_score(:, :, 1)) & (labels == 1);     % 标签为1的，前景得分大于背景得分的做为前景分类正确的accurate_fg
+    accurate_bg = (cls_score(:, :, 2) <= cls_score(:, :, 1)) & (labels == 0);    % 标签为0的，前景得分小于等于背景得分做为背景分类正确的accurate_bg
+    accurate = accurate_fg | accurate_bg;                                        % 总的accurate 为二者取与 | 
+    accuracy_fg = sum(accurate_fg(:) .* labels_weights(:)) / (sum(labels_weights(labels == 1)) + eps); % 在所有前景中，前景分类正确的比例
+    accuracy_bg = sum(accurate_bg(:) .* labels_weights(:)) / (sum(labels_weights(labels == 0)) + eps); % 在所有背景中，背景分类正确的比例
     
     rst(end+1) = struct('blob_name', 'accuracy_fg', 'data', accuracy_fg);
     rst(end+1) = struct('blob_name', 'accuracy_bg', 'data', accuracy_bg);
@@ -272,7 +299,7 @@ function model_path = snapshot(conf, caffe_solver, bbox_means, bbox_stds, cache_
     biase_back = biase;
     
     weights = ...
-        bsxfun(@times, weights, permute(bbox_stds_flatten, [2, 3, 4, 1])); % weights = weights * stds; 
+        bsxfun(@times, weights, permute(bbox_stds_flatten, [2, 3, 4, 1])); % weights = weights * stds; ? 为什么这里没有加上均值呢
     biase = ...
         biase .* bbox_stds_flatten + bbox_means_flatten; % bias = bias * stds + means;
     
@@ -303,30 +330,38 @@ function show_state(iter, train_results, val_results)
 end
 
 function check_loss(rst, caffe_solver, input_blobs)
-    im_blob = input_blobs{1};
-    labels_blob = input_blobs{2};
-    label_weights_blob = input_blobs{3};
-    bbox_targets_blob = input_blobs{4};
-    bbox_loss_weights_blob = input_blobs{5};
+    im_blob = input_blobs{1};               % 800x600x3 single
+    labels_blob = input_blobs{2};           % 51x39x9   single
+    label_weights_blob = input_blobs{3};    % 51x39x9   single
+    bbox_targets_blob = input_blobs{4};     % 51x39x36  single
+    bbox_loss_weights_blob = input_blobs{5};% 51x39x36  single
     
-    regression_output = caffe_solver.net.blobs('proposal_bbox_pred').get_data();
-    % smooth l1 loss
-    regression_delta = abs(regression_output(:) - bbox_targets_blob(:));
-    regression_delta_l2 = regression_delta < 1;
-    regression_delta = 0.5 * regression_delta .* regression_delta .* regression_delta_l2 + (regression_delta - 0.5) .* ~regression_delta_l2;
-    regression_loss = sum(regression_delta.* bbox_loss_weights_blob(:)) / size(regression_output, 1) / size(regression_output, 2);
+    regression_output = caffe_solver.net.blobs('proposal_bbox_pred').get_data(); % 51x39x36 single
+    % smooth l1 loss : 就是使用了论文中的SmoothL1loss公式，自己看一下就可以理解
+    regression_delta = abs(regression_output(:) - bbox_targets_blob(:));          % 71604x1 single
+    regression_delta_l2 = regression_delta < 1;                                   % 71604x1 logical,绝对值大于1的标记为1，其余的标记为0 
+    regression_delta = 0.5 * regression_delta .* regression_delta .* regression_delta_l2 + (regression_delta - 0.5) .* ~regression_delta_l2;  % 71604x1 single
+    regression_loss = sum(regression_delta.* bbox_loss_weights_blob(:)) / size(regression_output, 1) / size(regression_output, 2);  % 该张图片共有size(regression_output, 1) * size(regression_output, 2)，这么多个anchors，所以要将regression_loss除以anchors数目来做为这张图片bunuding boxes regression loss
     
-    confidence = caffe_solver.net.blobs('proposal_cls_score_reshape').get_data();
-    labels = reshape(labels_blob, size(labels_blob, 1), []);
-    label_weights = reshape(label_weights_blob, size(label_weights_blob, 1), []);
+    confidence = caffe_solver.net.blobs('proposal_cls_score_reshape').get_data(); % 51x351x2 single
+    labels = reshape(labels_blob, size(labels_blob, 1), []);                      % 51x351   single
+    label_weights = reshape(label_weights_blob, size(label_weights_blob, 1), []); % 51x351   single
     
-    confidence_softmax = bsxfun(@rdivide, exp(confidence), sum(exp(confidence), 3));
-    confidence_softmax = reshape(confidence_softmax, [], 2);
-    confidence_loss = confidence_softmax(sub2ind(size(confidence_softmax), 1:size(confidence_softmax, 1), labels(:)' + 1));
-    confidence_loss = -log(confidence_loss);
-    confidence_loss = sum(confidence_loss' .* label_weights(:)) / sum(label_weights(:));
+    % 分类层的loss计算要好好理解：
+    % 首先使用softmax函数计算51x351个anchors属于背景和前景的概率得分，然后再reshape一下，得到17901x2维度。
+    % 然后使用sub2ind将多维下标转化为1维索引，从而达到可以直接用这个索引取到每个anchors的值（labels为0，我们就会取到第一维的值；labels为1就会取到第二维的值）。
+    % 就比如这里的sub2ind(size(confidence_softmax), 1:size(confidence_softmax, 1), labels(:)' + 1)
+    % 同时转换多个元素的下标，共转换17901个
+    % 横轴  1:17901这么多个数，代表该元素的所在横坐标。
+    % 纵轴  labels(:)' + 1，代表该元素所在纵坐标。注意labels中只有0和1，我们这里通过加1，则将labels值都变为1和2了，就可以直接做为纵坐标来取了，
+    %      labels+1为1的时候代表该anchors属于原始标签为0的背景，为2的时候表示属于原始标签为1前景。这样，我们就可以将这些anchors真实属于的类别confidence_loss都提取出来。
+    confidence_softmax = bsxfun(@rdivide, exp(confidence), sum(exp(confidence), 3));     % 51x351x2 single
+    confidence_softmax = reshape(confidence_softmax, [], 2);                             % 17901x2  single
+    confidence_loss = confidence_softmax(sub2ind(size(confidence_softmax), 1:size(confidence_softmax, 1), labels(:)' + 1)); % 1x17901 single
+    confidence_loss = -log(confidence_loss); % 1x17901 single
+    confidence_loss = sum(confidence_loss' .* label_weights(:)) / sum(label_weights(:)); % 1x1 single
     
-    results = parse_rst([], rst);
+    results = parse_rst([], rst); % 验证使用CNN网络，即内部通过C++实现loss_cls 和 loss_bbox层的loss计算，是否和自己使用MATLAB计算的一致
     fprintf('C++   : conf %f, reg %f\n', results.loss_cls.data, results.loss_bbox.data);
     fprintf('Matlab: conf %f, reg %f\n', confidence_loss, regression_loss);
 end

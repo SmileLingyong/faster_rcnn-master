@@ -4,6 +4,8 @@ function [output_width_map, output_height_map] = proposal_calc_output_size(conf,
 % Faster R-CNN
 % Copyright (c) 2015, Shaoqing Ren
 % Licensed under The MIT License [see LICENSE for details]
+% 该函数的功能是：输入conf配置参数，以及网络结构CNN。然后计算将图片从100x100x3, 101x101x3,...到 1000x1000x3这样的大小，
+% 输入到该CNN中，对应得到的'proposal_cls_score'层的feature map大小。并将这些对应关系用map进行存储。
 % --------------------------------------------------------
 
 %     caffe.init_log(fullfile(pwd, 'caffe_log'));

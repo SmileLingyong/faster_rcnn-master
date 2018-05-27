@@ -13,7 +13,6 @@ clear is_valid_handle; % to clear init_key
 %% Comment out this line. modefied by lly on 2018.5.7 23:19 ---------------
 % run(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'startup'));
 %% -------------------- CONFIG --------------------
-caffe.reset_all();
 opts.caffe_version          = 'caffe_faster_rcnn';
 opts.gpu_id                 = 1;
 active_caffe_mex(opts.gpu_id, opts.caffe_version);
@@ -44,14 +43,17 @@ model                       = Faster_RCNN_Train.set_cache_folder(cache_base_prop
 %%  stage one proposal
 fprintf('\n***************\nstage one proposal \n***************\n');
 % train
+% 使用预训练好的Imagenet模型参数，初始化RPN网络，然后使用imdb和Anchors机制产生的anchors进行端到端的微调训练RPN网络，得到RPN模型model.stage1_rpn
 model.stage1_rpn            = Faster_RCNN_Train.do_proposal_train(conf_proposal, dataset, model.stage1_rpn, opts.do_val);
 % test
+% 将dataset中的imdb_train、roidb_train、imdb_test、roidb_test结构体数据，使用上一阶段训练好的RPN模型，生成我们需要的训练anchors和测试anchors(anchors中加上了ground truth)，用于下一阶段训练和测试Fast-RCNN网络
 dataset.roidb_train        	= cellfun(@(x, y) Faster_RCNN_Train.do_proposal_test(conf_proposal, model.stage1_rpn, x, y), dataset.imdb_train, dataset.roidb_train, 'UniformOutput', false);
 dataset.roidb_test        	= Faster_RCNN_Train.do_proposal_test(conf_proposal, model.stage1_rpn, dataset.imdb_test, dataset.roidb_test);
 
 %%  stage one fast rcnn
 fprintf('\n***************\nstage one fast rcnn\n***************\n');
 % train
+% 使用预训练好的Imagenet模型参数，初始化Fast-RCNN网络，然后使用上面处理好的dataset数据，主要是imdb和新的anchors来来训练一个单独的检测网络Fast-RCNN模型，此时两个网络还没有共享卷积层
 model.stage1_fast_rcnn      = Faster_RCNN_Train.do_fast_rcnn_train(conf_fast_rcnn, dataset, model.stage1_fast_rcnn, opts.do_val);
 % test
 opts.mAP                    = Faster_RCNN_Train.do_fast_rcnn_test(conf_fast_rcnn, model.stage1_fast_rcnn, dataset.imdb_test, dataset.roidb_test);
@@ -60,6 +62,7 @@ opts.mAP                    = Faster_RCNN_Train.do_fast_rcnn_test(conf_fast_rcnn
 % net proposal
 fprintf('\n***************\nstage two proposal\n***************\n');
 % train
+% 将第一阶段Fast-RCNN训练好的模型model.stage1_fast_rcnn，初始化第二阶段RPN网络，但我们固定共享的卷积层，并且只微调RPN独有的层，现在两个网络共享卷积层了
 model.stage2_rpn.init_net_file = model.stage1_fast_rcnn.output_model_file;
 model.stage2_rpn            = Faster_RCNN_Train.do_proposal_train(conf_proposal, dataset, model.stage2_rpn, opts.do_val);
 % test
@@ -69,6 +72,7 @@ dataset.roidb_test       	= Faster_RCNN_Train.do_proposal_test(conf_proposal, mo
 %%  stage two fast rcnn
 fprintf('\n***************\nstage two fast rcnn\n***************\n');
 % train
+% 使用一阶段训练的Fast-RCNN模型初始化，固定共享的卷积层，使用二阶段RPN产生的新的组合anchors来微调该模型的fc层
 model.stage2_fast_rcnn.init_net_file = model.stage1_fast_rcnn.output_model_file;
 model.stage2_fast_rcnn      = Faster_RCNN_Train.do_fast_rcnn_train(conf_fast_rcnn, dataset, model.stage2_fast_rcnn, opts.do_val);
 

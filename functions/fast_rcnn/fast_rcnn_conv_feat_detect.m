@@ -7,7 +7,9 @@ function [pred_boxes, scores] = fast_rcnn_conv_feat_detect(conf, caffe_net, im, 
 % Licensed under The MIT License [see LICENSE for details]
 %    该函数功能：将RPN网络conv5_3输出的feature map做为Fast-RCNN网络的输入'data'，
 % 还有一个输入就是rois，该rois是RPN网络产生的，并且是对应于缩放后的原图上的.
-% 然后使用detection_test.prototxt网络进行后续的softmax分类+bounding boxes回归.
+% 因为可能会有GPU不足的情况，我们这里设置的max_rois_num_in_gpu=300，如果rois数量大于这个值，则需要将rois分批次出入，
+% 每次最多输入300个rois到CNN中，并将输出的结果保存在该批次的cell数组中，最后将所有的cell数组结果使用cell2mat整合，
+% 就得到该张图片conv5_3特征+rois，使用fast-rcnn（detection_test.prototxt网络）进行softmax分类+bounding boxes回归结果.
 % 具体要查看这两个网络结构就可以比较容易明白:
 %   ./output/faster_rcnn_final/faster_rcnn_VOC0712_vgg_16layers/proposal_test.prototxt
 %   ./output/faster_rcnn_final/faster_rcnn_VOC0712_vgg_16layers/detection_test.prototxt
@@ -23,9 +25,9 @@ function [pred_boxes, scores] = fast_rcnn_conv_feat_detect(conf, caffe_net, im, 
     % set conv feature map as 'data', 把RPN网络conv5_3产生的feature map做为data输入到 Fast-RCNN网络中
     caffe_net.blobs('data').copy_data_from(conv_feat_blob);
     
-    total_rois = size(rois_blob, 4);
-    total_scores = cell(ceil(total_rois / max_rois_num_in_gpu), 1);
-    total_box_deltas = cell(ceil(total_rois / max_rois_num_in_gpu), 1);
+    total_rois = size(rois_blob, 4); % 115
+    total_scores = cell(ceil(total_rois / max_rois_num_in_gpu), 1);     % 1x1 cell {[]}: because of in this case, ceil(115/300) = 1
+    total_box_deltas = cell(ceil(total_rois / max_rois_num_in_gpu), 1); % 1x1 cell {[]}
     for i = 1:ceil(total_rois / max_rois_num_in_gpu)
         
         sub_ind_start = 1 + (i-1) * max_rois_num_in_gpu;
@@ -55,7 +57,7 @@ function [pred_boxes, scores] = fast_rcnn_conv_feat_detect(conf, caffe_net, im, 
         box_deltas = output_blobs{1};       % 84x115 single
         box_deltas = squeeze(box_deltas)';  % 115x84 single
         
-        total_scores{i} = scores;           % cell [115x21 single]
+        total_scores{i} = scores;           % cell [115x21 single]  注意这里的技巧，先每个batch rois结果都放到cell中，最后再使用cell2mat整合，以满足合适GPU的要求
         total_box_deltas{i} = box_deltas;   % cell [115x84 single]
     end 
     

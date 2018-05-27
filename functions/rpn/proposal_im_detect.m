@@ -5,7 +5,7 @@ function [pred_boxes, scores, box_deltas_, anchors_, scores_] = proposal_im_dete
 % 其使用RPN网络，得到了RPN网络之后的proposal_bbox_pred 和 proposal_cls_prb（即可知道经过卷积之后的feature map大小），
 % 然后计算该RPN网络最后输出的feature map中每个像素点，对应于原图中的位置。并使用该原图上的位置点，计算其在原图上的9个anchor(共有feature_map_size个位置)，
 % 即可得到9×feature_map_size个anchor. 然后再用box_deltas(每个anchors需要做的平移尺度变换)，对产生的anchors进行边框回归位置精修。这样我们就得到了该张图片所需要的region proposals(anchors)
-% 由output_blobs{2}:proposal_cls_prb[51x351x2]维，其表示经过分类层proposal_cls_score以及reshape——>softmax之后，输出的每个位置(共有51x39个位置)上, 9个anchor属于前景和背景的概率。
+% 由output_blobs{2}:proposal_cls_prb[50x342x2]维，其表示经过分类层proposal_cls_score以及reshape——>softmax之后，输出的每个位置(共有50x38个位置)上, 9个anchor属于前景和背景的概率。
 % 我们取第二维属于前景的概率得分，即得到了该张图片所有region proposals(anchors)属于前景的概率得分。
 % [ 这样我们就得到了该张图片所需要的 pred_boxes + scores ]
 % --------------------------------------------------------
@@ -21,8 +21,8 @@ function [pred_boxes, scores, box_deltas_, anchors_, scores_] = proposal_im_dete
     
     % permute data into caffe c++ memory, thus [num, channels, height, width]
     im_blob = im_blob(:, :, [3, 2, 1], :); % from rgb to brg  600x800x3
-    im_blob = permute(im_blob, [2, 1, 3, 4]);
-    im_blob = single(im_blob); % 600x800x3
+    im_blob = permute(im_blob, [2, 1, 3, 4]); % 800x600x3
+    im_blob = single(im_blob); % 800x600x3
 
     net_inputs = {im_blob};
 
@@ -31,11 +31,11 @@ function [pred_boxes, scores, box_deltas_, anchors_, scores_] = proposal_im_dete
     output_blobs = caffe_net.forward(net_inputs); % 2cell [50x38x36];[50x342x2]
 
     % Apply bounding-box regression deltas
-    box_deltas = output_blobs{1}; % 50x38x36
-    featuremap_size = [size(box_deltas, 2), size(box_deltas, 1)]; % 38x50
-    % permute from [width, height, channel] to [channel, height, width], where channel is the
-        % fastest dimension
-    box_deltas = permute(box_deltas, [3, 2, 1]); % 36x38x50
+    box_deltas = output_blobs{1}; % 50x38x36: 对应于[width, height, channel]
+    featuremap_size = [size(box_deltas, 2), size(box_deltas, 1)]; % 38x50, 对应于[hight, width]注意这里的细节，这里先取了height，然后再取的width
+    % permute from [width, height, channel] to [channel, height, width], where channel is the fastest dimension
+    % 这样box_deltas就和featuremap对应到了，都是[height, width]这样的优先顺序,对应于缩放后的原图尺寸就是600x800
+    box_deltas = permute(box_deltas, [3, 2, 1]); % 36x38x50, 
     box_deltas = reshape(box_deltas, 4, [])';    % 17100x4
     
     anchors = proposal_locate_anchors(conf, size(im), conf.test_scales, featuremap_size); %% #lly# see function detail, 此时得到的是缩放后的原图尺寸对应的anchors,(短边为600的)

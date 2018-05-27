@@ -3,6 +3,23 @@ function [image_roidb, bbox_means, bbox_stds] = fast_rcnn_prepare_image_roidb(co
 %   Gather useful information from imdb and roidb
 %   pre-calculate mean (bbox_means) and std (bbox_stds) of the regression
 %   term for normalization
+% 
+% 输入：
+%     imdbs(图片数据) + roidbs(候选框数据)
+% 输出：
+%     计算以下参数：其中包括，计算所有图片的image_roidb(i).bbox_targets的均值bbox_means和方差bbox_stds，并将image_roidb(i).bbox_targets使用该均值和方差进行归一化处理.
+%     image_roidb   : 10022x1 struct array with : 该参数主要理解bbox_targets的含义。
+%             image_path
+%             image_id
+%             im_size
+%             imdb_name
+%             overlap   : (每个[ground truth + region proposals] (boxes)与每个ground truth的重叠率[若一个boxes与同类的多个ground truth重叠率取最大的那个])
+%             boxes     : [ground truth + region proposals] (boxes)
+%             class     
+%             image
+%             bbox_targets  : 每个ex_rois与其gt_rois进行bounding boxes regression需要做的平移尺度变换(4个参数)。 再加上其所属ground truth类别标签(1参数)，构成bbox_targets
+%     bbox_means        : 21x4 double, 所有训练图片的rois的bbox_means均值，bbox_stds方差。
+%     bbox_stds         : 21x4 double
 % --------------------------------------------------------
 % Fast R-CNN
 % Reimplementation based on Python Fast R-CNN (https://github.com/rbgirshick/fast-rcnn)
@@ -106,7 +123,13 @@ end
 % 传入每一张图片的rois(region proposals)，overlap(每个[ground truth + region proposals] (boxes)与每个ground truth的重叠率[若一个boxes与同类的多个ground truth重叠率取最大的那个])。
 % 然后，找到overlap每行的最大值，以及该最大值属于哪一类，即可判断该rois的每个boxes属于哪一类。然后再筛选overlap大于conf.bbox_thresh的，即筛选出属于前景的boxes。 
 % 然后将这些属于前景的boxes与每个ground truth计算IOU，取每个前景boxes计算的最大的IOU的ground truth做为其 ground truth。
-% 然后计算每个ex_rois与其gt_rois进行bounding boxes regression需要做的平移尺度变换(4个参数)。 在加上其在rois中的索引(1参数)，构成bbox_targets。
+% 然后计算每个ex_rois与其gt_rois进行bounding boxes regression需要做的平移尺度变换(4个参数)。 再加上其所属ground truth类别标签(1参数)，构成bbox_targets。
+% Input:    
+%       rois:       2246x4  single
+%       overlap:    2246x20 single
+% Output:
+%       bbox_targets: 2246x5 single
+%       is_valid:     1x1    logical
 function [bbox_targets, is_valid] = compute_targets(conf, rois, overlap)
 
     overlap = full(overlap);
